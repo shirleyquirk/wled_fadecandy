@@ -6,38 +6,45 @@
  * This file is released into the public domain.
  */
 
-import java.net.*;
+//import java.net.*;
 import java.util.Arrays;
+import ch.bildspur.artnet.*;
+import ch.bildspur.artnet.packets.*;
+import ch.bildspur.artnet.events.*;
 
-public class WLED
+public class ARTNET
 {
-  Socket socket;
+  //Socket socket;
+  
   OutputStream output, pending;
-  DatagramSocket udpsock;
-  InetAddress wledaddress;
+  //DatagramSocket udpsock;
+  //InetAddress wledaddress;
   String host;
-  int port;
-
+  int start_universe;
+  int start_channel;
+  ArtNetClient artnet;
   int[] pixelLocations;
   byte[] packetData;
-  byte[][] wledData;
+  byte[][] dmxData;
   byte firmwareConfig;
   String colorCorrection;
   boolean enableShowLocations;
 
-  WLED(PApplet parent, String host, int port)
+  ARTNET(PApplet parent, String host, int start_universe, int start_channel)
   {
     this.host = host;
-    this.port = port;
+    this.start_universe = start_universe;
+    this.start_channel = start_channel;
     this.enableShowLocations = true;
     parent.registerMethod("draw", this);
-    try{
-      udpsock = new DatagramSocket();
-    }catch(Exception e){println("Failed to Open WLED Socket",e);}
-    try{
-      wledaddress = InetAddress.getByName(host);
-    }catch(Exception e){println("DNS lookup failed for ",host,e);}
-    
+    //try{
+    //  udpsock = new DatagramSocket();
+    //}catch(Exception e){println("Failed to Open WLED Socket",e);}
+    //try{
+     // wledaddress = InetAddress.getByName(host);
+    //}catch(Exception e){println("DNS lookup failed for ",host,e);}
+    artnet = new ArtNetClient(null);
+    artnet.start();
     
     
     
@@ -131,7 +138,7 @@ public class WLED
 
 
     int numPixels = pixelLocations.length;
-    int ledAddress = 4;
+    int ledAddress = 0;
     
     setPixelCount(numPixels);
     loadPixels();
@@ -140,17 +147,17 @@ public class WLED
       int pixelLocation = pixelLocations[i];
       int pixel = pixels[pixelLocation];
       
-      int wledPacket_idx = (ledAddress - 4)/(489*3);
-      int wledAddress = (ledAddress-4) % (489*3) + 4;
+      int dmxPacket_idx = (ledAddress)/(170*3);
+      int dmxAddress = (ledAddress) % (170*3);
       //ledAddress 489*3 is the last one
       //ledAddress 4+490*3 becomes 4
       //println("ledAddress: ",ledAddress,", wledPacket_idx: ",wledPacket_idx,", wledAddress",wledAddress);
       byte R = (byte)(pixel >> 16);
       byte G = (byte)(pixel >> 8);
       byte B = (byte)(pixel);
-      wledData[wledPacket_idx][wledAddress] = R;//(byte)(pixel >> 16);//R
-      wledData[wledPacket_idx][wledAddress + 1] = G;//(byte)(pixel >> 8);//G
-      wledData[wledPacket_idx][wledAddress + 2] = B;//(byte)pixel;//B
+      dmxData[dmxPacket_idx][dmxAddress] = R;//(byte)(pixel >> 16);//R
+      dmxData[dmxPacket_idx][dmxAddress + 1] = G;//(byte)(pixel >> 8);//G
+      dmxData[dmxPacket_idx][dmxAddress + 2] = B;//(byte)pixel;//B
 
       ledAddress += 3;
 
@@ -180,23 +187,24 @@ public class WLED
     // 2: pause for two seconds before doing something cool again
     // 255: infinite timeout
     // byte 2-3: start index H-L
-    int numWledPackets = numPixels / 490 + 1;
+    int numDMXPackets = numPixels / 169 + 1;
     //println("Packets= ",numWledPackets,", Pixels= ",numPixels);
     
-    if (wledData == null || wledData.length != numWledPackets) {
-      wledData = new byte[numWledPackets][];
-      for(int i=0;i<numWledPackets;i++){
-        int packet_pixels = min(numPixels,489);
+    if (dmxData == null || dmxData.length != numDMXPackets) {
+      dmxData = new byte[numDMXPackets][];
+      for(int i=0;i<numDMXPackets;i++){
+        int packet_pixels = min(numPixels,170);
         numPixels -= packet_pixels;
-        println("creating packet of size ",4+packet_pixels*3);
-        wledData[i] = new byte[4+packet_pixels*3];
-        int offset = 490 * i;
+        println("creating packet of size ",packet_pixels*3);
+        dmxData[i] = new byte[packet_pixels*3];
+        /*int offset = 170 * i;
         byte highByte = (byte)(offset >> 8);
         byte lowByte = (byte)offset;
         wledData[i][0] = 4;//DNRGB
         wledData[i][1] = 2;//two second timeout
         wledData[i][2] = highByte;
         wledData[i][3] = lowByte;
+        */
       }
     }
 
@@ -209,16 +217,17 @@ public class WLED
   // mapped any pixels to the screen you'll want to call this directly.
   void writePixels()
   {
-    if (wledData == null || wledData.length == 0){
+    if (dmxData == null || dmxData.length == 0){
     }else{
-      for(int i=0;i<wledData.length;i++){
-        DatagramPacket packet = new DatagramPacket(wledData[i],wledData[i].length,this.wledaddress,port);//21324 or 65506
-        try{
+      for(int i=0;i<dmxData.length;i++){
+        //DatagramPacket packet = new DatagramPacket(wledData[i],wledData[i].length,this.wledaddress,port);//21324 or 65506
+        artnet.unicastDmx(host,start_universe+i,0,dmxData[i]);
+/*        try{
           udpsock.send(packet);
         }catch(Exception e){
           println("failed to send packet ",e);
         }
-      }
+*/      }
     }
 
   }
